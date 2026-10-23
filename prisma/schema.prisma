@@ -1,0 +1,159 @@
+// Sprint 0 core schema: protected core for the Personal Finance App MVP.
+// Rules: balances are NEVER stored; only events create account effects;
+// every row is owned by a user; money is Decimal; history is preserved.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+enum EventType {
+  OPENING_BALANCE
+  INCOME
+  EXPENSE
+  TRANSFER
+  // Release 3 adds: BORROWING, LENDING, REPAYMENT (same effect-line structure)
+}
+
+enum EventStatus {
+  ACTIVE
+  REVERSED
+}
+
+enum RevisionChange {
+  CREATE
+  EDIT
+  REVERSE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  currency  String   @default("ETB")
+  createdAt DateTime @default(now())
+
+  accounts   Account[]
+  categories Category[]
+  tags       Tag[]
+  events     FinancialEvent[]
+}
+
+model Account {
+  id         String      @id @default(cuid())
+  userId     String
+  name       String // intentionally NOT unique
+  type       String      @default("Bank account")
+  isDefault  Boolean     @default(false)
+  archivedAt DateTime? // soft delete: history is preserved
+  createdAt  DateTime    @default(now())
+
+  user    User            @relation(fields: [userId], references: [id])
+  effects AccountEffect[]
+
+  @@index([userId])
+}
+
+// Arbitrary-depth hierarchy via self-reference.
+model Category {
+  id          String       @id @default(cuid())
+  userId      String
+  parentId    String?
+  kind        CategoryKind
+  name        String
+  description String?
+  archivedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  user     User             @relation(fields: [userId], references: [id])
+  parent   Category?        @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[]       @relation("CategoryTree")
+  events   FinancialEvent[]
+
+  @@index([userId, kind])
+  @@index([parentId])
+}
+
+model Tag {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+
+  user   User       @relation(fields: [userId], references: [id])
+  events EventTag[]
+
+  @@unique([userId, name])
+}
+
+model FinancialEvent {
+  id         String      @id @default(cuid())
+  userId     String
+  type       EventType
+  occurredAt DateTime // when it happened (user-adjustable)
+  recordedAt DateTime    @default(now()) // when it was entered (automatic)
+  amount     Decimal     @db.Decimal(14, 2) // positive total of the event
+  reason     String? // required for EXPENSE (enforced in app logic)
+  note       String?
+  categoryId String? // required for EXPENSE (enforced in app logic)
+  isPlanned  Boolean? // meaningful for EXPENSE only
+  status     EventStatus @default(ACTIVE)
+  reversedAt DateTime?
+  reverseNote String?
+
+  user      User            @relation(fields: [userId], references: [id])
+  category  Category?       @relation(fields: [categoryId], references: [id])
+  effects   AccountEffect[]
+  tags      EventTag[]
+  revisions EventRevision[]
+
+  @@index([userId, occurredAt])
+  @@index([userId, type, status])
+  @@index([categoryId])
+}
+
+// One line per account touched. This is what allows one income to many
+// accounts and one expense from many accounts without splitting events.
+model AccountEffect {
+  id        String  @id @default(cuid())
+  eventId   String
+  accountId String
+  amount    Decimal @db.Decimal(14, 2) // signed: + adds money, - removes money
+
+  event   FinancialEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  account Account        @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+  @@index([eventId])
+}
+
+model EventTag {
+  eventId String
+  tagId   String
+
+  event FinancialEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tag   Tag            @relation(fields: [tagId], references: [id])
+
+  @@id([eventId, tagId])
+}
+
+// Append-only history of meaningful changes (before/after snapshots).
+model EventRevision {
+  id         String         @id @default(cuid())
+  eventId    String
+  changeType RevisionChange
+  before     Json? // null for CREATE
+  after      Json?
+  changedAt  DateTime       @default(now())
+
+  event FinancialEvent @relation(fields: [eventId], references: [id])
+
+  @@index([eventId])
+}

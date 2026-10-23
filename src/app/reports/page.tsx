@@ -1,0 +1,99 @@
+import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/current-user";
+
+export const dynamic = "force-dynamic";
+
+const money = (value: number) => new Intl.NumberFormat("en-ET", { style: "currency", currency: "ETB", maximumFractionDigits: 2 }).format(value);
+const num = (value: { toString(): string } | null | undefined) => Number(value?.toString() ?? 0);
+const validDate = (value: string | undefined, fallback: Date) => {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return fallback;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+};
+const dateInput = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const niceType = (type: string) => type.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; type?: string; categoryId?: string; accountId?: string; status?: string }> }) {
+  const params = await searchParams;
+  const user = await getCurrentUser();
+  const now = new Date();
+  const startDefault = new Date(now.getFullYear(), now.getMonth(), 1);
+  const start = validDate(params.from, startDefault);
+  const end = validDate(params.to, now);
+  const from = start <= end ? start : validDate(params.to, now);
+  const to = start <= end ? end : validDate(params.from, startDefault);
+  const endExclusive = new Date(to); endExclusive.setDate(endExclusive.getDate() + 1);
+  const selectedType = ["INCOME", "EXPENSE", "TRANSFER", "OPENING_BALANCE"].includes(params.type ?? "") ? params.type! : "";
+  const selectedStatus = ["ACTIVE", "REVERSED", "ALL"].includes(params.status ?? "") ? params.status! : "ACTIVE";
+
+  const [accounts, categories, events] = await Promise.all([
+    prisma.account.findMany({ where: { userId: user.id }, orderBy: [{ archivedAt: "asc" }, { name: "asc" }] }),
+    prisma.category.findMany({ where: { userId: user.id }, orderBy: [{ kind: "asc" }, { name: "asc" }] }),
+    prisma.financialEvent.findMany({
+      where: {
+        userId: user.id,
+        occurredAt: { gte: from, lt: endExclusive },
+        ...(selectedType ? { type: selectedType as "INCOME" | "EXPENSE" | "TRANSFER" | "OPENING_BALANCE" } : {}),
+        ...(selectedStatus === "ALL" ? {} : { status: selectedStatus as "ACTIVE" | "REVERSED" }),
+        ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+        ...(params.accountId ? { effects: { some: { accountId: params.accountId } } } : {}),
+      },
+      include: { category: true, effects: { include: { account: true } }, tags: { include: { tag: true } } },
+      orderBy: [{ occurredAt: "desc" }, { recordedAt: "desc" }],
+    }),
+  ]);
+
+  // Financial totals exclude reversed events, even when the history filter is set to "All".
+  const effectiveEvents = events.filter((event) => event.status === "ACTIVE");
+  const totalIncome = effectiveEvents.filter((event) => event.type === "INCOME").reduce((sum, event) => sum + num(event.amount), 0);
+  const totalExpenses = effectiveEvents.filter((event) => event.type === "EXPENSE").reduce((sum, event) => sum + num(event.amount), 0);
+  const totalTransfers = effectiveEvents.filter((event) => event.type === "TRANSFER").reduce((sum, event) => sum + num(event.amount), 0);
+  const days = Math.max(1, Math.floor((new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() - new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()) / 86400000) + 1);
+  const dailyExpense = totalExpenses / days;
+  const typeTotals = ["INCOME", "EXPENSE", "TRANSFER", "OPENING_BALANCE"].map((type) => ({ type, amount: effectiveEvents.filter((event) => event.type === type).reduce((sum, event) => sum + num(event.amount), 0), count: effectiveEvents.filter((event) => event.type === type).length })).filter((row) => row.count > 0 || !selectedType);
+  const categoryMap = new Map<string, { name: string; kind: string; amount: number; count: number }>();
+  for (const event of effectiveEvents.filter((item) => item.type === "INCOME" || item.type === "EXPENSE")) {
+    const key = `${event.type}:${event.categoryId ?? "uncategorized"}`;
+    const current = categoryMap.get(key) ?? { name: event.category?.name ?? "Uncategorized", kind: event.type, amount: 0, count: 0 };
+    current.amount += num(event.amount); current.count += 1; categoryMap.set(key, current);
+  }
+  const categoryRows = [...categoryMap.values()].sort((a, b) => b.amount - a.amount);
+
+  return <main className="page-content">
+    <section className="page-title-row"><div><p className="eyebrow">ANALYSIS · 03</p><h1>Reports</h1><p className="muted">Filter your recorded financial events and inspect income, expenses, account activity, and category patterns.</p></div><div className="summary-chip"><span>Matching records</span><strong>{events.length}</strong><small>{from.toLocaleDateString()} – {to.toLocaleDateString()}</small></div></section>
+
+    <section className="panel report-filter-panel"><div className="panel-heading"><div><p className="eyebrow">REPORT PARAMETERS</p><h2>Choose what to analyze</h2></div><Link href="/reports" className="text-link">Reset filters ↺</Link></div>
+      <form method="get" action="/reports" className="report-filters">
+        <label>From date<input type="date" name="from" defaultValue={dateInput(from)} required /></label>
+        <label>To date<input type="date" name="to" defaultValue={dateInput(to)} required /></label>
+        <label>Transaction type<select name="type" defaultValue={selectedType}><option value="">All types</option><option value="INCOME">Income</option><option value="EXPENSE">Expense</option><option value="TRANSFER">Transfer</option><option value="OPENING_BALANCE">Opening balance</option></select></label>
+        <label>Category<select name="categoryId" defaultValue={params.categoryId ?? ""}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.kind === "INCOME" ? "Income" : "Expense"} · {category.name}{category.archivedAt ? " (archived)" : ""}</option>)}</select></label>
+        <label>Account<select name="accountId" defaultValue={params.accountId ?? ""}><option value="">All accounts</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}{account.archivedAt ? " (archived)" : ""}</option>)}</select></label>
+        <label>Record status<select name="status" defaultValue={selectedStatus}><option value="ACTIVE">Active only</option><option value="REVERSED">Reversed only</option><option value="ALL">All records</option></select></label>
+        <div className="report-filter-actions"><button className="button button-primary" type="submit">Run report</button><span className="field-hint">Totals ignore reversed events because they no longer affect calculated balances.</span></div>
+      </form>
+    </section>
+
+    <section className="metric-grid report-metrics">
+      <article className="metric-card"><span className="metric-label">Recorded income</span><strong className="positive-text">{money(totalIncome)}</strong><span className="metric-foot">Active income in filtered period</span></article>
+      <article className="metric-card"><span className="metric-label">Recorded expenses</span><strong className="negative-text">{money(totalExpenses)}</strong><span className="metric-foot">Active expenses in filtered period</span></article>
+      <article className="metric-card"><span className="metric-label">Net cash flow</span><strong className={totalIncome - totalExpenses >= 0 ? "positive-text" : "negative-text"}>{money(totalIncome - totalExpenses)}</strong><span className="metric-foot">Income minus expenses; transfers excluded</span></article>
+      <article className="metric-card"><span className="metric-label">Average daily spending</span><strong>{money(dailyExpense)}</strong><span className="metric-foot">Expenses ÷ {days} calendar day{days === 1 ? "" : "s"} in selected range</span></article>
+    </section>
+
+    <section className="content-grid report-analysis-grid">
+      <div className="panel"><div className="panel-heading"><div><p className="eyebrow">BY TYPE</p><h2>Transaction type summary</h2></div></div>
+        {typeTotals.length ? <div className="report-breakdown-list">{typeTotals.map((row) => <div className="report-breakdown-row" key={row.type}><div className="grow"><strong>{niceType(row.type)}</strong><small>{row.count} active record{row.count === 1 ? "" : "s"}</small></div><strong>{money(row.amount)}</strong></div>)}</div> : <p className="muted">No active events match these filters.</p>}
+      </div>
+      <div className="panel"><div className="panel-heading"><div><p className="eyebrow">BY CATEGORY</p><h2>Category breakdown</h2></div></div>
+        {categoryRows.length ? <div className="report-breakdown-list">{categoryRows.map((row) => { const maxForKind = Math.max(1, ...categoryRows.filter((item) => item.kind === row.kind).map((item) => item.amount)); return <div className="report-breakdown-row" key={`${row.kind}:${row.name}`}><div className="grow"><strong>{row.name}</strong><small>{niceType(row.kind)} · {row.count} record{row.count === 1 ? "" : "s"}</small><div className={`report-bar ${row.kind === "INCOME" ? "report-bar-income" : "report-bar-expense"}`}><span style={{ width: `${Math.max(2, row.amount / maxForKind * 100)}%` }} /></div></div><strong className={row.kind === "INCOME" ? "positive-text" : "negative-text"}>{money(row.amount)}</strong></div>; })}</div> : <p className="muted">No categorized income or expenses match these filters.</p>}
+      </div>
+    </section>
+
+    <section className="panel recent-panel"><div className="panel-heading"><div><p className="eyebrow">MATCHING RECORDS</p><h2>Transaction details</h2></div><span className="small-count">{events.length} records</span></div>
+      {events.length ? <div className="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Type / category</th><th>Account effects</th><th>Amount</th><th>Status</th></tr></thead><tbody>{events.map((event) => <tr key={event.id}><td>{event.occurredAt.toLocaleDateString()}</td><td><strong>{event.reason || niceType(event.type)}</strong><small>{event.note ?? ""}</small>{event.tags.length > 0 && <small>{event.tags.map((item) => item.tag.name).join(", ")}</small>}</td><td>{niceType(event.type)}<small>{event.category?.name ?? "—"}</small></td><td><div className="effect-list">{event.effects.map((effect) => <span key={effect.id}>{effect.account.name}: <strong className={num(effect.amount) >= 0 ? "positive-text" : "negative-text"}>{num(effect.amount) > 0 ? "+" : ""}{money(num(effect.amount))}</strong></span>)}</div></td><td>{money(num(event.amount))}</td><td><span className={`status-label ${event.status === "ACTIVE" ? "status-active" : "status-reversed"}`}>{niceType(event.status)}</span></td></tr>)}</tbody></table></div> : <div className="empty-state"><p>No records match these filters.</p><Link href="/transactions" className="button button-secondary">Record a transaction</Link></div>}
+    </section>
+    <p className="disclaimer">Reports describe entered records, not a forecast. Account transfers move money between your accounts and are excluded from income-minus-expense net cash flow. Reversed records remain visible in history but do not contribute to financial totals.</p>
+  </main>;
+}
