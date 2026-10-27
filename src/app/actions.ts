@@ -42,16 +42,18 @@ export async function createAccount(formData: FormData) {
   const user = await getCurrentUser();
   const name = value(formData, "name");
   const type = value(formData, "type");
+  const assignment = value(formData, "assignment") || null;
   const requestedDefault = formData.get("isDefault") === "on";
   if (name.length < 2) fail("/accounts", new Error("Account name must contain at least 2 characters."));
   if (type.length < 2 || type.length > 40) fail("/accounts", new Error("Account type must contain between 2 and 40 characters."));
+  if (assignment && assignment.length > 200) fail("/accounts", new Error("Account assignment must be 200 characters or fewer."));
 
   try {
     await prisma.$transaction(async (tx) => {
       const activeCount = await tx.account.count({ where: { userId: user.id, archivedAt: null } });
       const makeDefault = requestedDefault || activeCount === 0;
       if (makeDefault) await tx.account.updateMany({ where: { userId: user.id }, data: { isDefault: false } });
-      await tx.account.create({ data: { userId: user.id, name, type, isDefault: makeDefault } });
+      await tx.account.create({ data: { userId: user.id, name, type, assignment, isDefault: makeDefault } });
     });
   } catch (error) { fail("/accounts", error); }
   done(["/", "/accounts", "/transactions"], "/accounts", "Account created.");
@@ -302,12 +304,14 @@ export async function updateAccount(formData: FormData) {
   const accountId = value(formData, "accountId");
   const name = value(formData, "name");
   const type = value(formData, "type");
+  const assignment = value(formData, "assignment") || null;
   if (name.length < 2) fail("/accounts", new Error("Account name must contain at least 2 characters."));
   if (type.length < 2 || type.length > 40) fail("/accounts", new Error("Account type must contain between 2 and 40 characters."));
+  if (assignment && assignment.length > 200) fail("/accounts", new Error("Account assignment must be 200 characters or fewer."));
   try {
     const account = await prisma.account.findFirst({ where: { id: accountId, userId: user.id, archivedAt: null } });
     if (!account) throw new Error("Account not found or archived.");
-    await prisma.account.update({ where: { id: account.id }, data: { name, type } });
+    await prisma.account.update({ where: { id: account.id }, data: { name, type, assignment } });
   } catch (error) { fail("/accounts", error); }
   done(["/", "/accounts", "/transactions"], "/accounts", "Account updated.");
 }

@@ -13,3 +13,8 @@
 @media(max-width:720px){.quick-links-grid{grid-template-columns:1fr}.report-filters{grid-template-columns:1fr}.report-filter-actions{align-items:flex-start;flex-direction:column}.report-filter-actions .button{width:100%}.report-breakdown-row{align-items:flex-start}.account-history-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .report-bar{height:5px;margin-top:8px;border-radius:99px;background:#edf2f1;overflow:hidden;max-width:360px}.report-bar span{display:block;height:100%;border-radius:99px;background:var(--accent)}.report-bar-expense span{background:var(--red)}.report-bar-income span{background:var(--green)}
+
+
+/* Authentication and editable account assignment */
+.auth-page{display:flex;justify-content:center;align-items:flex-start;padding-top:42px}.auth-card{width:min(100%,470px);padding:30px}.auth-card h1{margin:4px 0 8px;font-size:30px;letter-spacing:-.04em}.auth-card>.muted{margin:0 0 22px;line-height:1.6}.auth-switch{margin:20px 0 0;color:var(--muted);font-size:12px}.auth-switch a{color:var(--accent);font-weight:800}.header-user{display:flex;align-items:center;gap:8px}.sign-out-button{white-space:nowrap}.auth-nav{margin-left:auto}.account-assignment-summary{margin:5px 0 0!important;color:var(--accent)!important;font-size:10px!important;line-height:1.45}.account-edit-form{grid-template-columns:1fr 1fr}.account-edit-form button{grid-column:1/-1}.account-edit-form label{min-width:0}
+@media(max-width:720px){.auth-page{padding-top:20px}.auth-card{padding:22px}.header-user{margin-left:auto}.header-user .currency-pill{max-width:130px;overflow:hidden;text-overflow:ellipsis}.auth-nav{order:3;flex-basis:100%;margin-left:0}.account-edit-form{grid-template-columns:1fr}}

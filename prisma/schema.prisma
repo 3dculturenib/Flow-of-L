@@ -38,6 +38,8 @@ enum RevisionChange {
 model User {
   id        String   @id @default(cuid())
   name      String
+  email     String?  @unique
+  passwordHash String?
   currency  String   @default("ETB")
   createdAt DateTime @default(now())
 
@@ -52,6 +54,7 @@ model Account {
   userId     String
   name       String // intentionally NOT unique
   type       String      @default("Bank account")
+  assignment String? // user-defined purpose/assignment; editable at any time
   isDefault  Boolean     @default(false)
   archivedAt DateTime? // soft delete: history is preserved
   createdAt  DateTime    @default(now())
