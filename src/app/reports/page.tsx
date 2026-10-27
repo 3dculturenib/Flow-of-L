@@ -15,7 +15,7 @@ const validDate = (value: string | undefined, fallback: Date) => {
 const dateInput = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const niceType = (type: string) => type.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; type?: string; categoryId?: string; accountId?: string; status?: string }> }) {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; type?: string; categoryId?: string; tagId?: string; accountId?: string; status?: string }> }) {
   const params = await searchParams;
   const user = await getCurrentUser();
   const now = new Date();
@@ -28,22 +28,24 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const selectedType = ["INCOME", "EXPENSE", "TRANSFER", "OPENING_BALANCE"].includes(params.type ?? "") ? params.type! : "";
   const selectedStatus = ["ACTIVE", "REVERSED", "ALL"].includes(params.status ?? "") ? params.status! : "ACTIVE";
 
-  const [accounts, categories, events] = await Promise.all([
+  const [accounts, categories, tags] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: [{ archivedAt: "asc" }, { name: "asc" }] }),
     prisma.category.findMany({ where: { userId: user.id, ...(selectedType === "INCOME" ? { kind: "INCOME" } : selectedType === "EXPENSE" ? { kind: "EXPENSE" } : selectedType ? { id: "__no_categories_for_this_type__" } : {}) }, orderBy: [{ kind: "asc" }, { name: "asc" }] }),
-    prisma.financialEvent.findMany({
-      where: {
-        userId: user.id,
-        occurredAt: { gte: from, lt: endExclusive },
-        ...(selectedType ? { type: selectedType as "INCOME" | "EXPENSE" | "TRANSFER" | "OPENING_BALANCE" } : {}),
-        ...(selectedStatus === "ALL" ? {} : { status: selectedStatus as "ACTIVE" | "REVERSED" }),
-        ...(params.categoryId && categories.some((category) => category.id === params.categoryId) ? { categoryId: params.categoryId } : {}),
-        ...(params.accountId ? { effects: { some: { accountId: params.accountId } } } : {}),
-      },
-      include: { category: true, effects: { include: { account: true } }, tags: { include: { tag: true } } },
-      orderBy: [{ occurredAt: "desc" }, { recordedAt: "desc" }],
-    }),
+    prisma.tag.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
   ]);
+  const events = await prisma.financialEvent.findMany({
+    where: {
+      userId: user.id,
+      occurredAt: { gte: from, lt: endExclusive },
+      ...(selectedType ? { type: selectedType as "INCOME" | "EXPENSE" | "TRANSFER" | "OPENING_BALANCE" } : {}),
+      ...(selectedStatus === "ALL" ? {} : { status: selectedStatus as "ACTIVE" | "REVERSED" }),
+      ...(params.categoryId && categories.some((category) => category.id === params.categoryId) ? { categoryId: params.categoryId } : {}),
+      ...(params.accountId ? { effects: { some: { accountId: params.accountId } } } : {}),
+      ...(params.tagId && tags.some((tag) => tag.id === params.tagId) ? { tags: { some: { tagId: params.tagId } } } : {}),
+    },
+    include: { category: true, effects: { include: { account: true } }, tags: { include: { tag: true } } },
+    orderBy: [{ occurredAt: "desc" }, { recordedAt: "desc" }],
+  });
 
   // Financial totals exclude reversed events, even when the history filter is set to "All".
   const effectiveEvents = events.filter((event) => event.status === "ACTIVE");
@@ -60,9 +62,20 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     current.amount += num(event.amount); current.count += 1; categoryMap.set(key, current);
   }
   const categoryRows = [...categoryMap.values()].sort((a, b) => b.amount - a.amount);
+  const tagMap = new Map<string, { name: string; income: number; expenses: number; count: number }>();
+  for (const event of effectiveEvents) {
+    for (const eventTag of event.tags) {
+      const row = tagMap.get(eventTag.tagId) ?? { name: eventTag.tag.name, income: 0, expenses: 0, count: 0 };
+      if (event.type === "INCOME") row.income += num(event.amount);
+      if (event.type === "EXPENSE") row.expenses += num(event.amount);
+      row.count += 1;
+      tagMap.set(eventTag.tagId, row);
+    }
+  }
+  const tagRows = [...tagMap.entries()].map(([id, row]) => ({ id, ...row, net: row.income - row.expenses })).sort((a, b) => (b.expenses + b.income) - (a.expenses + a.income));
 
   return <main className="page-content">
-    <section className="page-title-row"><div><p className="eyebrow">ANALYSIS · 03</p><h1>Reports</h1><p className="muted">Filter your recorded financial events and inspect income, expenses, account activity, and category patterns.</p></div><div className="summary-chip"><span>Matching records</span><strong>{events.length}</strong><small>{from.toLocaleDateString()} – {to.toLocaleDateString()}</small></div></section>
+    <section className="page-title-row"><div><p className="eyebrow">ANALYSIS · 03</p><h1>Reports</h1><p className="muted">Filter your financial events and analyze income, expenses, categories, accounts, and cross-category tags.</p></div><div className="summary-chip"><span>Matching records</span><strong>{events.length}</strong><small>{from.toLocaleDateString()} – {to.toLocaleDateString()}</small></div></section>
 
     <section className="panel report-filter-panel"><div className="panel-heading"><div><p className="eyebrow">REPORT PARAMETERS</p><h2>Choose what to analyze</h2></div><Link href="/reports" className="text-link">Reset filters ↺</Link></div>
       <ReportFilters
@@ -70,10 +83,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         to={dateInput(to)}
         type={selectedType}
         categoryId={categories.some((category) => category.id === params.categoryId) ? params.categoryId ?? "" : ""}
+        tagId={tags.some((tag) => tag.id === params.tagId) ? params.tagId ?? "" : ""}
         accountId={params.accountId ?? ""}
         status={selectedStatus}
         categories={categories.map((category) => ({ id: category.id, name: category.name, kind: category.kind, archivedAt: category.archivedAt?.toISOString() ?? null }))}
         accounts={accounts.map((account) => ({ id: account.id, name: account.name, archivedAt: account.archivedAt?.toISOString() ?? null }))}
+        tags={tags.map((tag) => ({ id: tag.id, name: tag.name }))}
       />
     </section>
 
@@ -91,6 +106,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <div className="panel"><div className="panel-heading"><div><p className="eyebrow">BY CATEGORY</p><h2>Category breakdown</h2></div></div>
         {categoryRows.length ? <div className="report-breakdown-list">{categoryRows.map((row) => { const maxForKind = Math.max(1, ...categoryRows.filter((item) => item.kind === row.kind).map((item) => item.amount)); return <div className="report-breakdown-row" key={`${row.kind}:${row.name}`}><div className="grow"><strong>{row.name}</strong><small>{niceType(row.kind)} · {row.count} record{row.count === 1 ? "" : "s"}</small><div className={`report-bar ${row.kind === "INCOME" ? "report-bar-income" : "report-bar-expense"}`}><span style={{ width: `${Math.max(2, row.amount / maxForKind * 100)}%` }} /></div></div><strong className={row.kind === "INCOME" ? "positive-text" : "negative-text"}>{money(row.amount)}</strong></div>; })}</div> : <p className="muted">No categorized income or expenses match these filters.</p>}
       </div>
+    </section>
+
+    <section className="panel"><div className="panel-heading"><div><p className="eyebrow">CROSS-CATEGORY ANALYSIS</p><h2>Analysis by tag</h2></div><span className="small-count">{tagRows.length} tags used</span></div>
+      {tagRows.length ? <><p className="muted">Tags group records across categories—for example, a Work Trip tag can group transport, meals, and accommodation. A transaction with multiple tags appears in each relevant tag row, so tag totals overlap and should not be added together.</p><div className="table-wrap"><table><thead><tr><th>Tag</th><th>Records</th><th>Income</th><th>Expenses</th><th>Income − expenses</th></tr></thead><tbody>{tagRows.map((row) => <tr key={row.id}><td><strong>{row.name}</strong></td><td>{row.count}</td><td className="positive-text">{money(row.income)}</td><td className="negative-text">{money(row.expenses)}</td><td className={row.net >= 0 ? "positive-text" : "negative-text"}>{money(row.net)}</td></tr>)}</tbody></table></div></> : <p className="muted">No tags are used in the matching records yet. Add optional tags such as Family, Work Trip, or Home Project when recording transactions to see cross-category analysis here.</p>}
     </section>
 
     <section className="panel recent-panel"><div className="panel-heading"><div><p className="eyebrow">MATCHING RECORDS</p><h2>Transaction details</h2></div><span className="small-count">{events.length} records</span></div>

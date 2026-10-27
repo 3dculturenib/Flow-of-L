@@ -8,6 +8,8 @@ import { getCurrentUser } from "@/lib/current-user";
 import { validateEffects } from "@/lib/events";
 import { findOverdrawnAccounts } from "@/lib/balance";
 
+const ACCOUNT_TYPES = ["Bank account", "Cash", "Mobile money", "Savings account", "Investment", "Wallet", "Other"] as const;
+
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
@@ -45,7 +47,7 @@ export async function createAccount(formData: FormData) {
   const assignment = value(formData, "assignment") || null;
   const requestedDefault = formData.get("isDefault") === "on";
   if (name.length < 2) fail("/accounts", new Error("Account name must contain at least 2 characters."));
-  if (type.length < 2 || type.length > 40) fail("/accounts", new Error("Account type must contain between 2 and 40 characters."));
+  if (!(ACCOUNT_TYPES as readonly string[]).includes(type)) fail("/accounts", new Error("Choose an account type from the list."));
   if (assignment && assignment.length > 200) fail("/accounts", new Error("Account assignment must be 200 characters or fewer."));
 
   try {
@@ -306,7 +308,7 @@ export async function updateAccount(formData: FormData) {
   const type = value(formData, "type");
   const assignment = value(formData, "assignment") || null;
   if (name.length < 2) fail("/accounts", new Error("Account name must contain at least 2 characters."));
-  if (type.length < 2 || type.length > 40) fail("/accounts", new Error("Account type must contain between 2 and 40 characters."));
+  if (!(ACCOUNT_TYPES as readonly string[]).includes(type)) fail("/accounts", new Error("Choose an account type from the list."));
   if (assignment && assignment.length > 200) fail("/accounts", new Error("Account assignment must be 200 characters or fewer."));
   try {
     const account = await prisma.account.findFirst({ where: { id: accountId, userId: user.id, archivedAt: null } });

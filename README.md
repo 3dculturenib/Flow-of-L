@@ -1,4 +1,4 @@
-# Personal Finance App — MVP 1
+# Personal Finance App — MVP 3
 
 This iteration adds login/registration and account-specific data ownership to the existing Next.js + Prisma MVP. It remains a prototype: authentication is implemented for local testing, but a full security/deployment review is required before exposing it publicly. Currency defaults to ETB.
 
@@ -92,11 +92,14 @@ npm run db:studio
 - Login, registration, sign out, per-user data ownership, signed sessions, and password hashing.
 - Optional account assignment/purpose field, editable later from the account page.
 - Report category options narrow to income categories when Income is selected and expense categories when Expense is selected; with no type selected, all categories are available.
-- See [MVP_IMPROVEMENTS.md](./MVP_IMPROVEMENTS.md) for dashboard analytics, account history, and reports.
+- Tag-based reports include a tag filter and cross-category analysis of income, expenses, net cash flow, and record counts. Tags are optional and totals overlap when an event has multiple tags.
+- New registrations complete a one-time setup asking only for the first account name, fixed account type, and optional opening balance. ETB remains the V1 currency.
+- Account types are a fixed dropdown: Bank account (default), Cash, Mobile money, Savings account, Investment, Wallet, Other.
+- See [MVP_IMPROVEMENTS.md](./MVP_IMPROVEMENTS.md) for dashboard analytics and account history, and [MVP3_TAG_REPORTS_ONBOARDING.md](./MVP3_TAG_REPORTS_ONBOARDING.md) for this iteration.
 
 ### Updating an existing database
 
-The Prisma schema has new nullable `User.email`, `User.passwordHash`, and `Account.assignment` fields. Back up the database first, then apply the schema to your existing prototype database and regenerate Prisma Client:
+The Prisma schema has new nullable `User.email`, `User.passwordHash`, and `Account.assignment` fields, plus `User.setupComplete` (defaults to true for existing users). Back up the database first, then apply the schema to your existing prototype database and regenerate Prisma Client:
 
 ```bash
 npx prisma db push

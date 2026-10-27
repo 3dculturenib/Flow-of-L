@@ -47,5 +47,6 @@ export async function getOptionalCurrentUser() {
 export async function getCurrentUser() {
   const user = await getOptionalCurrentUser();
   if (!user || !user.email || !user.passwordHash) redirect("/login");
+  if (!user.setupComplete) redirect("/setup");
   return user;
 }
