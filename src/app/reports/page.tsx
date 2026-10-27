@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
+import { ReportFilters } from "@/components/report-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +30,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   const [accounts, categories, events] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: [{ archivedAt: "asc" }, { name: "asc" }] }),
-    prisma.category.findMany({ where: { userId: user.id }, orderBy: [{ kind: "asc" }, { name: "asc" }] }),
+    prisma.category.findMany({ where: { userId: user.id, ...(selectedType === "INCOME" ? { kind: "INCOME" } : selectedType === "EXPENSE" ? { kind: "EXPENSE" } : selectedType ? { id: "__no_categories_for_this_type__" } : {}) }, orderBy: [{ kind: "asc" }, { name: "asc" }] }),
     prisma.financialEvent.findMany({
       where: {
         userId: user.id,
         occurredAt: { gte: from, lt: endExclusive },
         ...(selectedType ? { type: selectedType as "INCOME" | "EXPENSE" | "TRANSFER" | "OPENING_BALANCE" } : {}),
         ...(selectedStatus === "ALL" ? {} : { status: selectedStatus as "ACTIVE" | "REVERSED" }),
-        ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+        ...(params.categoryId && categories.some((category) => category.id === params.categoryId) ? { categoryId: params.categoryId } : {}),
         ...(params.accountId ? { effects: { some: { accountId: params.accountId } } } : {}),
       },
       include: { category: true, effects: { include: { account: true } }, tags: { include: { tag: true } } },
@@ -64,15 +65,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     <section className="page-title-row"><div><p className="eyebrow">ANALYSIS · 03</p><h1>Reports</h1><p className="muted">Filter your recorded financial events and inspect income, expenses, account activity, and category patterns.</p></div><div className="summary-chip"><span>Matching records</span><strong>{events.length}</strong><small>{from.toLocaleDateString()} – {to.toLocaleDateString()}</small></div></section>
 
     <section className="panel report-filter-panel"><div className="panel-heading"><div><p className="eyebrow">REPORT PARAMETERS</p><h2>Choose what to analyze</h2></div><Link href="/reports" className="text-link">Reset filters ↺</Link></div>
-      <form method="get" action="/reports" className="report-filters">
-        <label>From date<input type="date" name="from" defaultValue={dateInput(from)} required /></label>
-        <label>To date<input type="date" name="to" defaultValue={dateInput(to)} required /></label>
-        <label>Transaction type<select name="type" defaultValue={selectedType}><option value="">All types</option><option value="INCOME">Income</option><option value="EXPENSE">Expense</option><option value="TRANSFER">Transfer</option><option value="OPENING_BALANCE">Opening balance</option></select></label>
-        <label>Category<select name="categoryId" defaultValue={params.categoryId ?? ""}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.kind === "INCOME" ? "Income" : "Expense"} · {category.name}{category.archivedAt ? " (archived)" : ""}</option>)}</select></label>
-        <label>Account<select name="accountId" defaultValue={params.accountId ?? ""}><option value="">All accounts</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}{account.archivedAt ? " (archived)" : ""}</option>)}</select></label>
-        <label>Record status<select name="status" defaultValue={selectedStatus}><option value="ACTIVE">Active only</option><option value="REVERSED">Reversed only</option><option value="ALL">All records</option></select></label>
-        <div className="report-filter-actions"><button className="button button-primary" type="submit">Run report</button><span className="field-hint">Totals ignore reversed events because they no longer affect calculated balances.</span></div>
-      </form>
+      <ReportFilters
+        from={dateInput(from)}
+        to={dateInput(to)}
+        type={selectedType}
+        categoryId={categories.some((category) => category.id === params.categoryId) ? params.categoryId ?? "" : ""}
+        accountId={params.accountId ?? ""}
+        status={selectedStatus}
+        categories={categories.map((category) => ({ id: category.id, name: category.name, kind: category.kind, archivedAt: category.archivedAt?.toISOString() ?? null }))}
+        accounts={accounts.map((account) => ({ id: account.id, name: account.name, archivedAt: account.archivedAt?.toISOString() ?? null }))}
+      />
     </section>
 
     <section className="metric-grid report-metrics">

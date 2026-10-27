@@ -1,6 +1,6 @@
 # Personal Finance App — MVP 1
 
-This iteration adds the first usable local MVP workflows to the Next.js + Prisma starter. It is designed for one local user (`seed-user`) and ETB. Authentication, collaborative use, planning, savings-purpose allocation, borrowing/lending, and advanced forecasting are not implemented in this iteration.
+This iteration adds login/registration and account-specific data ownership to the existing Next.js + Prisma MVP. It remains a prototype: authentication is implemented for local testing, but a full security/deployment review is required before exposing it publicly. Currency defaults to ETB.
 
 ## Included functionality
 
@@ -37,28 +37,35 @@ This iteration adds the first usable local MVP workflows to the Next.js + Prisma
    npm run db:generate
    ```
 
-4. Apply the current prototype schema and create sample data:
+4. Apply the current prototype schema and optionally create sample data:
 
    ```bash
    npm run db:migrate -- --name mvp1_foundation
    npm run db:seed
    ```
 
-5. Start Next.js:
+5. Add an authentication secret to `.env`. Generate a random secret with:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+
+   Set the result as `AUTH_SECRET="..."` in `.env`.
+
+6. Start Next.js and open `http://localhost:3000`, then create your account and sign in:
 
    ```bash
    npm run dev
    ```
 
-6. Open `http://localhost:3000`.
-
-The seed is safe to rerun for the existing demo records. It ensures a `Me` user, three accounts (Main account: 25,000 ETB; Savings account: 40,000 ETB; Cash: 1,500 ETB), and starter categories. If those sample accounts are not wanted, do not run the seed; the application creates the local user on first visit and you can create accounts/categories manually.
+The seed creates sample data for testing. If you want to keep existing financial records created by the old local MVP, do not delete or reset the database. The first registration claims the old `seed-user` record when it exists, preserving that record’s accounts, categories, and transactions. Avoid running the seed unless you intentionally want demo records.
 
 ## Important model and data notes
 
 - The schema remains a prototype pending the full conceptual-model and historical-source checkpoint. Do not use it as a production system or for irreplaceable financial records yet.
 - Before a database migration is treated as final, review the complete model and confirm the remaining relationship and source-reconciliation work.
-- The app currently has no authentication. It is a local single-user prototype; do not expose it to the internet or use it as a multi-user deployment.
+- Authentication now uses a signed, HTTP-only, SameSite cookie with a 14-day expiry and scrypt password hashing. This is an MVP implementation, not a substitute for a production security review, rate limiting, email verification, password reset, or deployment hardening.
+- **Important first-registration behavior:** if the old `seed-user` record exists, the first successful registration claims it to preserve existing financial data. This is suitable only while the app remains private/local. Before public deployment, replace this bootstrap behavior with an explicit owner migration/claim step so an unknown visitor cannot claim legacy data.
 - Balances are calculated from account effects on ACTIVE events. They are not stored directly.
 - Opening balances are not income. Borrowed principal, lending, repayments, savings-purpose allocation, and obligation/receivable relationships are not yet implemented.
 - To correct a normal transaction in this version, reverse it and record the corrected event. The original record remains in history.
@@ -82,4 +89,18 @@ npm run db:studio
 
 ## Latest MVP improvements
 
-See [MVP_IMPROVEMENTS.md](./MVP_IMPROVEMENTS.md) for the dashboard analytics, account-history timeline, and transaction-report filters added in the latest source update. These additions do not change the Prisma schema and do not require a migration.
+- Login, registration, sign out, per-user data ownership, signed sessions, and password hashing.
+- Optional account assignment/purpose field, editable later from the account page.
+- Report category options narrow to income categories when Income is selected and expense categories when Expense is selected; with no type selected, all categories are available.
+- See [MVP_IMPROVEMENTS.md](./MVP_IMPROVEMENTS.md) for dashboard analytics, account history, and reports.
+
+### Updating an existing database
+
+The Prisma schema has new nullable `User.email`, `User.passwordHash`, and `Account.assignment` fields. Back up the database first, then apply the schema to your existing prototype database and regenerate Prisma Client:
+
+```bash
+npx prisma db push
+npm run db:generate
+```
+
+This prototype uses `db push` for this incremental schema update because the delivered source ZIP has no checked-in migration history. Do not reset the database; the added fields are nullable and existing records are retained.
