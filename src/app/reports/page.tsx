@@ -51,7 +51,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const effectiveEvents = events.filter((event) => event.status === "ACTIVE");
   const totalIncome = effectiveEvents.filter((event) => event.type === "INCOME").reduce((sum, event) => sum + num(event.amount), 0);
   const totalExpenses = effectiveEvents.filter((event) => event.type === "EXPENSE").reduce((sum, event) => sum + num(event.amount), 0);
-  const totalTransfers = effectiveEvents.filter((event) => event.type === "TRANSFER").reduce((sum, event) => sum + num(event.amount), 0);
   const days = Math.max(1, Math.floor((new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() - new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()) / 86400000) + 1);
   const dailyExpense = totalExpenses / days;
   const typeTotals = ["INCOME", "EXPENSE", "TRANSFER", "OPENING_BALANCE"].map((type) => ({ type, amount: effectiveEvents.filter((event) => event.type === type).reduce((sum, event) => sum + num(event.amount), 0), count: effectiveEvents.filter((event) => event.type === type).length })).filter((row) => row.count > 0 || !selectedType);

@@ -65,6 +65,6 @@ export default async function AccountsPage({ searchParams }: { searchParams?: Pr
         <div className="account-actions"><Link className="button button-quiet" href={`/accounts/${account.id}/history`}>View history</Link><form action={restoreAccount}><input type="hidden" name="accountId" value={account.id} /><button className="button button-secondary" type="submit">Restore account</button></form></div>
       </article>)}</div> : <div className="empty-state"><p>No archived accounts. When you archive an account, it will appear here.</p></div>}
     </section>
-    <p className="field-hint">Account safety: archiving preserves history; balances are never manually overwritten. If a transaction reversal changes an archived account's balance, the app automatically restores that account so the resulting balance remains visible.</p>
+    <p className="field-hint">Account safety: archiving preserves history; balances are never manually overwritten. If a transaction reversal changes an archived account&apos;s balance, the app automatically restores that account so the resulting balance remains visible.</p>
   </main>;
 }
