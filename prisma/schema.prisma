@@ -29,6 +29,25 @@ enum EventStatus {
   REVERSED
 }
 
+enum PlanKind {
+  INCOME
+  EXPENSE
+}
+
+// Ordered from highest to lowest priority for the Planning list.
+enum PlanPriority {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum PlanMatchStatus {
+  SUGGESTED
+  CONFIRMED
+  REJECTED
+}
+
 enum RevisionChange {
   CREATE
   EDIT
@@ -48,6 +67,7 @@ model User {
   categories Category[]
   tags       Tag[]
   events     FinancialEvent[]
+  plans      FinancialPlan[]
 }
 
 model Account {
@@ -81,6 +101,7 @@ model Category {
   parent   Category?        @relation("CategoryTree", fields: [parentId], references: [id])
   children Category[]       @relation("CategoryTree")
   events   FinancialEvent[]
+  plans    FinancialPlan[]
 
   @@index([userId, kind])
   @@index([parentId])
@@ -117,6 +138,7 @@ model FinancialEvent {
   effects   AccountEffect[]
   tags      EventTag[]
   revisions EventRevision[]
+  planMatches PlanMatch[]
 
   @@index([userId, occurredAt])
   @@index([userId, type, status])
@@ -160,4 +182,45 @@ model EventRevision {
   event FinancialEvent @relation(fields: [eventId], references: [id])
 
   @@index([eventId])
+}
+
+
+// Planning is an expectation only; it never creates account effects or changes balances.
+model FinancialPlan {
+  id          String   @id @default(cuid())
+  userId      String
+  kind        PlanKind
+  priority    PlanPriority @default(NORMAL)
+  name        String
+  amount      Decimal  @db.Decimal(14, 2)
+  startDate   DateTime
+  endDate     DateTime
+  categoryId  String
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user       User          @relation(fields: [userId], references: [id])
+  category   Category      @relation(fields: [categoryId], references: [id])
+  matches    PlanMatch[]
+
+  @@index([userId, startDate, endDate])
+  @@index([categoryId])
+}
+
+// A confirmed match links an actual event to a plan. Rejected suggestions are remembered
+// so they are not repeatedly suggested. A match never modifies the event itself.
+model PlanMatch {
+  id        String          @id @default(cuid())
+  planId    String
+  eventId   String
+  status    PlanMatchStatus
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  plan  FinancialPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  event FinancialEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, eventId])
+  @@index([eventId, status])
 }

@@ -18,7 +18,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <Link className="brand" href="/"><span className="brand-mark">F</span><span><strong>Flow of L</strong><small>Personal finance</small></span></Link>
         {authenticated ? <>
           <nav className="main-nav" aria-label="Main navigation">
-            <Link href="/">Overview</Link><Link href="/accounts">Accounts</Link><Link href="/transactions">Transactions</Link><Link href="/reports">Reports</Link><Link href="/categories">Categories</Link>
+            <Link href="/">Overview</Link><Link href="/accounts">Accounts</Link><Link href="/transactions">Transactions</Link><Link href="/reports">Reports</Link><Link href="/planning">Planning</Link><Link href="/categories">Categories</Link>
           </nav>
           <div className="header-user"><span className="currency-pill">{user?.name}</span><form action={logout}><button className="button button-quiet sign-out-button" type="submit">Sign out</button></form></div>
         </> : <nav className="main-nav auth-nav" aria-label="Account navigation"><Link href="/login">Sign in</Link><Link href="/register">Create account</Link></nav>}

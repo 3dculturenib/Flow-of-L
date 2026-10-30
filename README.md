@@ -107,3 +107,11 @@ npm run db:generate
 ```
 
 This prototype uses `db push` for this incremental schema update because the delivered source ZIP has no checked-in migration history. Do not reset the database; the added fields are nullable and existing records are retained.
+
+## MVP 4 — Planning
+
+The Planning page lets you create editable planned-income and planned-expense entries over a single date or custom date range. Each plan has a purpose/name, category, expected total, dates, and optional note. The app suggests active transactions that share the plan's category/type and fall inside its date range. Amount closeness ranks candidates; the user must confirm or dismiss each suggestion. Confirming a match links records only and never changes account balances. Confirmed actual totals exclude reversed transactions. See `MVP4_PLANNING.md` for the database update and test checklist.
+
+
+## MVP 4.1 Planning refinements
+Planning now filters category choices by plan type during creation and editing. Plans also have editable Critical / High / Normal / Low priority and are ordered with highest priority first. See `PATCH_NOTES_MVP4_1.md`. Before using, back up your database and run `npx prisma db push` followed by `npm run db:generate`; do not reset the database.
